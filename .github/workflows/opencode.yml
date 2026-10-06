@@ -296,8 +296,9 @@ jobs:
           [ -z "$TARGET_ISSUE" ] && TARGET_ISSUE="${{ steps.ctx.outputs.pr_number }}"
           if [ -n "$TARGET_ISSUE" ]; then
             MSG="⏱️ **Attenzione**: la sessione ha raggiunto il limite di tempo o è stata interrotta.
-I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:
-\`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`"
+
+            I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:
+            \`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`"
             JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
             curl -s -X POST "$API/issues/$TARGET_ISSUE/comments" \
               -H "Authorization: Bearer $GH_TOKEN" \
