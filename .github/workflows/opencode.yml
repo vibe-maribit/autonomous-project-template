@@ -52,7 +52,7 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       # Modello predefinito e visivo
       DEFAULT_MODEL: ${{ vars.OPENCODE_DEFAULT_MODEL || 'opencode/big-pickle' }}
-      VISUAL_MODEL: ${{ vars.OPENCODE_VISUAL_MODEL || 'space-bunny-free' }}
+      VISUAL_MODEL: ${{ vars.OPENCODE_VISUAL_MODEL || 'opencode/space-bunny-free' }}
       MAX_ITERATIONS: "4"
 
     steps:
@@ -60,6 +60,11 @@ jobs:
         run: |
           ALLOWED_USERS="${{ vars.OPENCODE_ALLOWED_USERS || 'nik2208 vibe-maribit' }}"
           if [ "$IS_MANUAL" = "true" ]; then exit 0; fi
+          ASSOC="${{ github.event.issue.author_association || github.event.comment.author_association }}"
+          if [ "$ASSOC" = "OWNER" ] || [ "$ASSOC" = "COLLABORATOR" ] || [ "$ASSOC" = "MEMBER" ]; then
+            echo "Utente '$COMMENT_AUTHOR' autorizzato con associazione $ASSOC."
+            exit 0
+          fi
           if ! echo " $ALLOWED_USERS " | grep -q " $COMMENT_AUTHOR "; then
             echo "Utente '$COMMENT_AUTHOR' non autorizzato. Interrompo."
             exit 1
@@ -180,6 +185,9 @@ jobs:
             FINAL_MODEL="$VISUAL_MODEL"
           else
             FINAL_MODEL="$DEFAULT_MODEL"
+          fi
+          if [ -n "$FINAL_MODEL" ] && [[ "$FINAL_MODEL" != *"/"* ]]; then
+            FINAL_MODEL="opencode/$FINAL_MODEL"
           fi
           [ -z "$FINAL_MODEL" ] && FINAL_MODEL="opencode/big-pickle"
           echo "selected_model=$FINAL_MODEL" >> "$GITHUB_OUTPUT"

@@ -7,6 +7,9 @@ set -euo pipefail
 
 PLAN_KEY="${PLAN_KEY:-${BRANCH_NAME:-plan}}"
 CHOSEN_MODEL="${CHOSEN_MODEL:-${DEFAULT_MODEL:-opencode/big-pickle}}"
+if [[ "$CHOSEN_MODEL" != *"/"* ]]; then
+  CHOSEN_MODEL="opencode/$CHOSEN_MODEL"
+fi
 MAX_ITERATIONS="${MAX_ITERATIONS:-4}"
 PLAN_FILE="issue_plans/${PLAN_KEY}.md"
 
@@ -27,11 +30,18 @@ else
   CLEAN_PROMPT=$(cat /tmp/clean_prompt.txt 2>/dev/null || echo "Nessun prompt")
   CONTEXT=$(cat /tmp/context.txt 2>/dev/null || echo "")
 
-  opencode run --agent planner --model "$CHOSEN_MODEL" \
-    "Analizza la richiesta e crea il piano di lavoro.
+  PLAN_PROMPT="Analizza la richiesta e crea il piano di lavoro.
 Richiesta: $CLEAN_PROMPT
 Contesto: ${ISSUE_TITLE:-} - ${ISSUE_BODY:-}
-$CONTEXT" | tee "$PLAN_FILE"
+$CONTEXT"
+
+  if ! opencode run --agent planner --model "$CHOSEN_MODEL" "$PLAN_PROMPT" | tee "$PLAN_FILE"; then
+    if [ "$CHOSEN_MODEL" != "opencode/big-pickle" ]; then
+      echo "⚠️ Fallimento con $CHOSEN_MODEL. Fallback a opencode/big-pickle..."
+      CHOSEN_MODEL="opencode/big-pickle"
+      opencode run --agent planner --model "$CHOSEN_MODEL" "$PLAN_PROMPT" | tee "$PLAN_FILE" || true
+    fi
+  fi
 
   cp "$PLAN_FILE" /tmp/plan.md
 
@@ -52,8 +62,7 @@ VERDICT="FAIL"
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
   echo "::group::Iterazione $i — BUILD ($CHOSEN_MODEL)"
-  opencode run --agent build --auto --model "$CHOSEN_MODEL" \
-    "Sei in modalità BUILD. Implementa il piano completando TUTTI i task e
+  BUILD_PROMPT="Sei in modalità BUILD. Implementa il piano completando TUTTI i task e
 soddisfacendo TUTTI gli Acceptance Criteria. Applica le modifiche ai file.
 
 === PIANO ===
@@ -64,6 +73,14 @@ $CONTEXT
 
 === FEEDBACK REVIEW PRECEDENTE ===
 $REVIEW_FEEDBACK"
+
+  if ! opencode run --agent build --auto --model "$CHOSEN_MODEL" "$BUILD_PROMPT"; then
+    if [ "$CHOSEN_MODEL" != "opencode/big-pickle" ]; then
+      echo "⚠️ Fallimento con $CHOSEN_MODEL. Fallback a opencode/big-pickle..."
+      CHOSEN_MODEL="opencode/big-pickle"
+      opencode run --agent build --auto --model "$CHOSEN_MODEL" "$BUILD_PROMPT" || true
+    fi
+  fi
   echo "::endgroup::"
 
   # Checkpoint commit & push
