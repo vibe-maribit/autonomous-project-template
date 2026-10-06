@@ -1,0 +1,64 @@
+name: OpenCode Autonomous Pipeline (Gitea / Forgejo)
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened, edited]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to resolve'
+        required: true
+        type: string
+      model:
+        description: 'Model override (e.g., opencode/big-pickle, space-bunny-free)'
+        required: false
+        default: ''
+        type: string
+      visual_model:
+        description: 'Visual model override'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  autonomous-agent:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/oc')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'autonomous'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup OpenCode 2
+        run: |
+          npm install -g opencode@latest
+          opencode --version
+
+      - name: Run Unified Autonomous Orchestrator
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_TIMEOUT_MINUTES: 360
+          INPUT_MODEL: ${{ inputs.model }}
+          INPUT_VISUAL_MODEL: ${{ inputs.visual_model }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.inputs.issue_number }}
+          ISSUE_BODY: ${{ github.event.issue.body || github.event.comment.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          chmod +x .opencode/ci/runner.sh
+          .opencode/ci/runner.sh

@@ -1,0 +1,32 @@
+# GitLab CI Pipeline for Autonomous OpenCode Agent
+stages:
+  - autonomous
+
+image: node:22-bullseye
+
+variables:
+  GIT_DEPTH: 0
+  OPENCODE_TIMEOUT_MINUTES: "360"
+
+run_autonomous_agent:
+  stage: autonomous
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+  timeout: 6h
+  before_script:
+    - apt-get update && apt-get install -y git curl jq
+    - npm install -g opencode@latest
+    - opencode --version
+    - git config --global user.name "${GITLAB_USER_NAME:-OpenCode AI}"
+    - git config --global user.email "${GITLAB_USER_EMAIL:-bot@opencode.local}"
+  script:
+    - chmod +x .opencode/ci/runner.sh
+    - .opencode/ci/runner.sh
+  artifacts:
+    when: always
+    paths:
+      - .opencode/checkpoints/
+      - .opencode/plan.md
+    expire_in: 1 week
