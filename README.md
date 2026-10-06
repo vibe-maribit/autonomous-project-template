@@ -18,14 +18,14 @@ When issues or feature requests are opened, OpenCode autonomously analyzes requi
   - **Gitea / Forgejo Actions** (`.gitea/workflows/opencode.yaml`)
   - **GitLab CI** (`.gitlab-ci.yml`)
 - **4-Stage Autonomous Pipeline**:
-  1. 👁️ **Visual Inspection**: Detects images in issues/comments and processes UI mockups using visual models (`space-bunny-free` fallback).
+  1. 👁️ **Visual Inspection**: Detects images in issues/comments and processes UI mockups using visual models (`opencode/space-bunny-free` fallback).
   2. 📝 **Deterministic Planning**: Read-only planner agent writes a detailed plan (`.opencode/plan.md`) and commits it.
   3. 💻 **Implementation**: Coding agent builds the solution following the plan and executes automated tests.
   4. 🧐 **Independent Code Review**: Read-only reviewer agent (`.opencode/agents/reviewer.md`) validates security, test coverage, and code hygiene before merge.
 - **Configurable Models & Privacy Fallback**:
   - Per-run model override via `inputs.model` / `OPENCODE_MODEL`.
   - Default fallback: `opencode/big-pickle` (or custom provider).
-  - Visual fallback: `space-bunny-free` (conditional on image detection).
+  - Visual fallback: `opencode/space-bunny-free` (conditional on image detection).
   - Optional `OPENCODE_API_KEY` for paid, privacy-compliant subscriptions (falls back seamlessly to free tiers when omitted).
 - **Graceful Timeout Checkpoint (360 min)**:
   - Workflow max timeout configured to 360 minutes (6 hours).

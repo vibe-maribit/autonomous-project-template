@@ -30,7 +30,7 @@ body:
     id: visual_context
     attributes:
       label: Riferimenti Visivi o Immagini (Opzionale)
-      description: Trascina qui screenshot o mockup. OpenCode utilizzerà un modello visivo (es. space-bunny-free) per analizzarli.
+      description: Trascina qui screenshot o mockup. OpenCode utilizzerà un modello visivo (es. opencode/space-bunny-free) per analizzarli.
       placeholder: Incolla qui le immagini o screenshot...
   - type: input
     id: oc_trigger

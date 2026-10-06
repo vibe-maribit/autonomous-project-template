@@ -6,7 +6,16 @@
 set -euo pipefail
 
 PLAN_KEY="${PLAN_KEY:-${BRANCH_NAME:-plan}}"
-CHOSEN_MODEL="${CHOSEN_MODEL:-${DEFAULT_MODEL:-opencode/big-pickle}}"
+CHOSEN_MODEL="${INPUT_MODEL:-${CHOSEN_MODEL:-${DEFAULT_MODEL:-opencode/big-pickle}}}"
+
+# Rilevamento immagini per supporto visuale autonomo (GitHub, Gitea, GitLab)
+FULL_TEXT="${ISSUE_BODY:-} ${ISSUE_TITLE:-} ${CLEAN_PROMPT:-}"
+if [ -z "${INPUT_MODEL:-}" ] && echo "$FULL_TEXT" | grep -Eq '(!\[[^]]*\]\([^)]+\)|<img[[:space:]]|user-attachments|\.(png|jpe?g|gif|webp|bmp))'; then
+  VISUAL_MODEL="${INPUT_VISUAL_MODEL:-${VISUAL_MODEL:-opencode/space-bunny-free}}"
+  echo "🖼️ Immagini rilevate nel testo dell'issue: utilizzo del modello visivo $VISUAL_MODEL"
+  CHOSEN_MODEL="$VISUAL_MODEL"
+fi
+
 if [[ "$CHOSEN_MODEL" != *"/"* ]]; then
   CHOSEN_MODEL="opencode/$CHOSEN_MODEL"
 fi
@@ -91,8 +100,7 @@ $REVIEW_FEEDBACK"
   fi
 
   echo "::group::Iterazione $i — REVIEW ($CHOSEN_MODEL)"
-  opencode run --agent reviewer --auto --model "$CHOSEN_MODEL" \
-    "Verifica sul codice ATTUALE se OGNI Acceptance Criterion del piano è
+  REVIEW_PROMPT="Verifica sul codice ATTUALE se OGNI Acceptance Criterion del piano è
 soddisfatto. Puoi eseguire build/lint/test ma NON modificare i file.
 
 === PIANO ===
@@ -101,7 +109,17 @@ ${PLAN:-Richiesta: $CLEAN_PROMPT}
 Scrivi come ULTIMA riga ESATTAMENTE una di queste:
 - 'VERDICT: PASS'  se tutti i criteri sono soddisfatti
 - 'VERDICT: FAIL'  altrimenti, seguita da un elenco puntato dei criteri NON
-  soddisfatti e di cosa manca." | tee /tmp/review.txt
+  soddisfatti e di cosa manca."
+
+  REVIEW_OUTPUT=$(opencode run --agent reviewer --auto --model "$CHOSEN_MODEL" "$REVIEW_PROMPT" 2>&1 || true)
+  if echo "$REVIEW_OUTPUT" | grep -q "Unexpected server error" || [ -z "$REVIEW_OUTPUT" ]; then
+    if [ "$CHOSEN_MODEL" != "opencode/big-pickle" ]; then
+      echo "⚠️ Fallimento con $CHOSEN_MODEL nella review. Fallback a opencode/big-pickle..."
+      CHOSEN_MODEL="opencode/big-pickle"
+      REVIEW_OUTPUT=$(opencode run --agent reviewer --auto --model "$CHOSEN_MODEL" "$REVIEW_PROMPT" 2>&1 || true)
+    fi
+  fi
+  printf '%s\n' "$REVIEW_OUTPUT" | tee /tmp/review.txt
   echo "::endgroup::"
 
   if grep -q 'VERDICT: PASS' /tmp/review.txt; then

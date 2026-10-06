@@ -10,7 +10,7 @@ Questo repository è dotato di un ciclo di vita di sviluppo autonomo gestito da 
 2. **Assegna o commenta con `/oc`**:
    - Esempio: `/oc Implementa la gestione dell'ordinamento per data nella vista documenti`
 3. **OpenCode si attiva automaticamente**:
-   - Se includi immagini o screenshot, viene impiegato il modello visivo (`space-bunny-free` o custom).
+   - Se includi immagini o screenshot, viene impiegato il modello visivo (`opencode/space-bunny-free` o custom).
    - Genera prima un piano di lavoro verificabile (`issue_plans/`).
    - Sviluppa il codice ed esegue i test in loop finché non riceve `VERDICT: PASS`.
    - Apre la Pull Request, esegue il merge automatico e chiude la Issue associata.

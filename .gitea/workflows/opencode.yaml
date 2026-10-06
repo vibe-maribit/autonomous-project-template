@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       model:
-        description: 'Model override (e.g., opencode/big-pickle, space-bunny-free)'
+        description: 'Model override (e.g., opencode/big-pickle, opencode/space-bunny-free)'
         required: false
         default: ''
         type: string
