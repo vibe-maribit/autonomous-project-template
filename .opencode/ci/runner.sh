@@ -111,18 +111,17 @@ Scrivi come ULTIMA riga ESATTAMENTE una di queste:
 - 'VERDICT: FAIL'  altrimenti, seguita da un elenco puntato dei criteri NON
   soddisfatti e di cosa manca."
 
-  REVIEW_OUTPUT=$(opencode run --agent reviewer --auto --model "$CHOSEN_MODEL" "$REVIEW_PROMPT" 2>&1 || true)
-  if echo "$REVIEW_OUTPUT" | grep -q "Unexpected server error" || [ -z "$REVIEW_OUTPUT" ]; then
+  opencode run --agent reviewer --auto --model "$CHOSEN_MODEL" "$REVIEW_PROMPT" 2>&1 | tee /tmp/review.txt || true
+  if grep -q "Unexpected server error" /tmp/review.txt || [ ! -s /tmp/review.txt ]; then
     if [ "$CHOSEN_MODEL" != "opencode/big-pickle" ]; then
       echo "⚠️ Fallimento con $CHOSEN_MODEL nella review. Fallback a opencode/big-pickle..."
       CHOSEN_MODEL="opencode/big-pickle"
-      REVIEW_OUTPUT=$(opencode run --agent reviewer --auto --model "$CHOSEN_MODEL" "$REVIEW_PROMPT" 2>&1 || true)
+      opencode run --agent reviewer --auto --model "$CHOSEN_MODEL" "$REVIEW_PROMPT" 2>&1 | tee /tmp/review.txt || true
     fi
   fi
-  printf '%s\n' "$REVIEW_OUTPUT" | tee /tmp/review.txt
   echo "::endgroup::"
 
-  if grep -q 'VERDICT: PASS' /tmp/review.txt; then
+  if grep -Eq 'VERDICT:[[:space:]]*PASS' /tmp/review.txt; then
     echo "✅ Acceptance criteria soddisfatti all'iterazione $i."
     VERDICT="PASS"
     break
