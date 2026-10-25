@@ -33,7 +33,7 @@ jobs:
 
     env:
       GH_API: "https://api.github.com"
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
       COMMENT_BODY: ${{ github.event.comment.body || github.event.issue.body || github.event.inputs.prompt }}
       COMMENT_AUTHOR: ${{ github.event.comment.user.login || github.event.issue.user.login || github.actor }}
@@ -59,7 +59,8 @@ jobs:
     steps:
       - name: Verifica autorizzazione utente
         run: |
-          ALLOWED_USERS="${{ vars.OPENCODE_ALLOWED_USERS || 'nik2208 vibe-maribit' }}"
+          REPO_OWNER="${{ github.repository_owner }}"
+          ALLOWED_USERS="${{ vars.OPENCODE_ALLOWED_USERS || '' }} $REPO_OWNER nik2208 vibe-maribit"
           if [ "$IS_MANUAL" = "true" ]; then exit 0; fi
           ASSOC="${{ github.event.issue.author_association || github.event.comment.author_association }}"
           if [ "$ASSOC" = "OWNER" ] || [ "$ASSOC" = "COLLABORATOR" ] || [ "$ASSOC" = "MEMBER" ]; then
@@ -95,7 +96,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Configura git
         run: |
@@ -195,11 +196,14 @@ jobs:
 
       - name: Esegui Orchestrazione OpenCode (Plan + Build/Review Loop)
         id: build_review
+        env:
+          HAS_WORKFLOW_PAT: ${{ secrets.GH_PAT != '' }}
         run: |
           export BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
           export PLAN_KEY="${{ steps.ctx.outputs.plan_key }}"
           export CHOSEN_MODEL="${{ steps.model.outputs.selected_model }}"
           export MAX_ITERATIONS="$MAX_ITERATIONS"
+          export HAS_WORKFLOW_PAT="$HAS_WORKFLOW_PAT"
           bash .opencode/ci/runner.sh
           VERDICT=$(grep '^VERDICT=' /tmp/runner_output.env 2>/dev/null | cut -d'=' -f2 || echo "FAIL")
           echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
@@ -210,6 +214,37 @@ jobs:
           API="$GH_API/repos/$REPO"
           BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
           CHOSEN_MODEL="${{ steps.model.outputs.selected_model }}"
+
+          # Protezione GITHUB_TOKEN contro modifiche a .github/workflows/
+          if [ "${{ secrets.GH_PAT != '' }}" != "true" ]; then
+            echo "🔒 Sanitizzazione preventiva di .github/workflows/..."
+            mkdir -p templates/workflows .opencode/ci_proposed
+            git status --porcelain .github/workflows/ 2>/dev/null | while read -r st f; do
+              case "$st" in
+                \?\?|A\ |AM)
+                  if [ "$f" != ".github/workflows/opencode.yml" ]; then
+                    echo "📦 Spostamento di $f in templates/workflows/"
+                    mv "$f" templates/workflows/ 2>/dev/null || true
+                  fi
+                  ;;
+                M\ |MM|\ M|D\ |\ D)
+                  git checkout origin/main -- "$f" 2>/dev/null || true
+                  ;;
+              esac
+            done
+            git checkout origin/main -- .github/workflows/ 2>/dev/null || true
+            git clean -fd .github/workflows/ 2>/dev/null || true
+
+            # Se commit precedenti sul branch contengono modifiche a .github/workflows/, ripuliamo la cronologia
+            if git diff --name-only origin/main..HEAD -- .github/workflows/ 2>/dev/null | grep -q .; then
+              echo "⚠️ Rilevate modifiche pregresse a .github/workflows/ nella cronologia del branch. Pulizia commit..."
+              git reset --soft origin/main
+              git checkout origin/main -- .github/workflows/ 2>/dev/null || true
+              git clean -fd .github/workflows/ 2>/dev/null || true
+              git commit -m "OpenCode ($CHOSEN_MODEL): $BRANCH_NAME (workflows sanitizzati)" || true
+            fi
+          fi
+
           git add .
           git commit -m "OpenCode ($CHOSEN_MODEL): $BRANCH_NAME" || echo "Nessuna nuova modifica."
 
@@ -222,6 +257,10 @@ jobs:
               git merge --abort || true
               HAS_CONFLICT=true
             else
+              if [ "${{ secrets.GH_PAT != '' }}" != "true" ]; then
+                git checkout origin/main -- .github/workflows/ 2>/dev/null || true
+                git clean -fd .github/workflows/ 2>/dev/null || true
+              fi
               git add .
               git commit -m "OpenCode: risoluzione automatica conflitti con main" || true
             fi
@@ -289,24 +328,38 @@ jobs:
                 -H "Content-Type: application/json" \
                 -d '{"state":"closed","state_reason":"completed"}' > /dev/null || true
             fi
+            if [ -f ".github/workflows/deploy.yml" ]; then
+              echo "🚀 Avvio workflow deploy.yml su main..."
+              curl -s -X POST "$API/actions/workflows/deploy.yml/dispatches" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -H "Content-Type: application/json" \
+                -d '{"ref":"main"}' > /dev/null || true
+            fi
           fi
 
-      - name: Salvataggio progressi su timeout o cancellazione
-        if: cancelled()
+      - name: Salvataggio progressi su timeout o errore
+        if: always() && steps.build_review.conclusion != 'skipped' && steps.push.conclusion != 'success'
         continue-on-error: true
         run: |
           API="$GH_API/repos/$REPO"
           BRANCH_NAME="${{ steps.ctx.outputs.branch_name }}"
           CHOSEN_MODEL="${{ steps.model.outputs.selected_model }}"
+
+          if [ "${{ secrets.GH_PAT != '' }}" != "true" ]; then
+            git checkout origin/main -- .github/workflows/ 2>/dev/null || true
+            git clean -fd .github/workflows/ 2>/dev/null || true
+          fi
+
           git add .
-          git commit -m "OpenCode ($CHOSEN_MODEL): checkpoint emergenza (timeout/cancellazione)" || true
+          git commit -m "OpenCode ($CHOSEN_MODEL): checkpoint emergenza (timeout/errore)" || true
           git push origin "$BRANCH_NAME" || true
           TARGET_ISSUE="$ISSUE_NUMBER"
           [ -z "$TARGET_ISSUE" ] && TARGET_ISSUE="${{ steps.ctx.outputs.pr_number }}"
           if [ -n "$TARGET_ISSUE" ]; then
-            MSG="⏱️ **Attenzione**: la sessione ha raggiunto il limite di tempo o è stata interrotta.
+            MSG="⏱️ **Attenzione**: l'esecuzione di OpenCode si è interrotta o ha riscontrato un errore prima del completamento del push.
 
-            I progressi sono stati salvati su \`$BRANCH_NAME\`. Riprendi il lavoro con:
+            I progressi disponibili sono stati salvati su \`$BRANCH_NAME\`. Puoi verificare i log delle GitHub Actions o riprendere con:
             \`/oc riprendi e completa il lavoro sul branch $BRANCH_NAME\`"
             JSON_BODY=$(jq -n --arg b "$MSG" '{"body": $b}')
             curl -s -X POST "$API/issues/$TARGET_ISSUE/comments" \

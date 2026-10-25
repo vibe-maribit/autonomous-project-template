@@ -16,4 +16,4 @@ Closes #
 
 ## Autonomous Execution Metadata
 - **Agent**: OpenCode 2
-- **Plan File**: `.opencode/plan.md`
+- **Plan File**: `issue_plans/<plan_key>.md`

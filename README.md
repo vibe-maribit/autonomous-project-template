@@ -106,6 +106,11 @@ autonomous-project-template/
 
 For private projects, set the `OPENCODE_API_KEY` repository secret. When provided, OpenCode routes requests through paid, zero-data-retention endpoints. When omitted, it safely falls back to standard community endpoints.
 
+### Workflow & CI/CD Permissions
+By default, GitHub Actions' default `GITHUB_TOKEN` is prevented from pushing commits modifying `.github/workflows/` (to prevent privilege escalation).
+- If your autonomous workflow needs to modify or generate GitHub Actions workflows, set a repository secret named `GH_PAT` (Personal Access Token with `workflow` scope).
+- When `GH_PAT` is omitted, the pipeline automatically detects and safely redirects any generated CI/CD workflows to `templates/workflows/`, preventing rejection errors and preserving the generated code.
+
 For reporting security vulnerabilities in this template, see [SECURITY.md](SECURITY.md).
 
 ---

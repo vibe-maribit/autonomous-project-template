@@ -24,6 +24,31 @@ PLAN_FILE="issue_plans/${PLAN_KEY}.md"
 
 mkdir -p issue_plans /tmp
 
+sanitize_workflows() {
+  if [ "${HAS_WORKFLOW_PAT:-false}" = "true" ]; then
+    return 0
+  fi
+  if git status --porcelain .github/workflows/ 2>/dev/null | grep -q .; then
+    echo "⚠️ Rilevati file in .github/workflows/. Protezione GITHUB_TOKEN attiva."
+    mkdir -p templates/workflows .opencode/ci_proposed
+    git status --porcelain .github/workflows/ 2>/dev/null | while read -r st f; do
+      case "$st" in
+        \?\?|A\ |AM)
+          if [ "$f" != ".github/workflows/opencode.yml" ]; then
+            echo "📦 Spostamento di $f in templates/workflows/"
+            mv "$f" templates/workflows/ 2>/dev/null || true
+          fi
+          ;;
+        M\ |MM|\ M|D\ |\ D)
+          git checkout HEAD -- "$f" 2>/dev/null || true
+          ;;
+      esac
+    done
+    git checkout HEAD -- .github/workflows/ 2>/dev/null || true
+    git clean -fd .github/workflows/ 2>/dev/null || true
+  fi
+}
+
 echo "=========================================================="
 echo "🚀 Avvio OpenCode Autonomous Runner"
 echo "Modello: $CHOSEN_MODEL | Max Iterazioni: $MAX_ITERATIONS"
@@ -74,6 +99,10 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   BUILD_PROMPT="Sei in modalità BUILD. Implementa il piano completando TUTTI i task e
 soddisfacendo TUTTI gli Acceptance Criteria. Applica le modifiche ai file.
 
+REGOLE CRITICHE DI SICUREZZA (GITHUB ACTIONS):
+- NON creare né modificare MAI file dentro '.github/' o '.github/workflows/'. Qualsiasi file in '.github/workflows/' provocherà il rifiuto del push da parte di GitHub ('refusing to allow a GitHub App to create or update workflow without workflows permission').
+- Se sono richiesti workflow di test, CI/CD o deploy (es. GitHub Pages), salvali come template in 'templates/workflows/' e documenta i passaggi nel 'README.md', MAI in '.github/workflows/'.
+
 === PIANO ===
 ${PLAN:-Richiesta: $CLEAN_PROMPT}
 
@@ -92,7 +121,8 @@ $REVIEW_FEEDBACK"
   fi
   echo "::endgroup::"
 
-  # Checkpoint commit & push
+  # Checkpoint commit & push con sanitizzazione preventiva
+  sanitize_workflows
   git add .
   git commit -m "OpenCode ($CHOSEN_MODEL): build progress (iterazione $i)" || true
   if [ -n "${BRANCH_NAME:-}" ]; then
@@ -102,6 +132,9 @@ $REVIEW_FEEDBACK"
   echo "::group::Iterazione $i — REVIEW ($CHOSEN_MODEL)"
   REVIEW_PROMPT="Verifica sul codice ATTUALE se OGNI Acceptance Criterion del piano è
 soddisfatto. Puoi eseguire build/lint/test ma NON modificare i file.
+
+REGOLE DI REVIEW:
+- Non richiedere né verificare la presenza di file direttamente in '.github/workflows/'. I template di CI/deploy devono trovarsi in 'templates/workflows/' o essere documentati in 'README.md'.
 
 === PIANO ===
 ${PLAN:-Richiesta: $CLEAN_PROMPT}
